@@ -193,7 +193,7 @@ class ModelController extends GetxController {
   /// Clear the temporary file cache used by FilePicker.
   Future<void> clearCache() async {
     try {
-      await FilePicker.platform.clearTemporaryFiles();
+      await FilePicker.clearTemporaryFiles();
       Get.snackbar(
         'Cache Cleared',
         'Temporary files have been removed.',
@@ -261,7 +261,7 @@ class ModelController extends GetxController {
   /// Import a .gguf file via file picker.
   Future<void> importModelFromFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.any,
         onFileLoading: (FilePickerStatus status) {
           if (status == FilePickerStatus.picking) {
@@ -275,9 +275,8 @@ class ModelController extends GetxController {
         },
       );
 
-      if (result != null && result.files.isNotEmpty) {
+      if (file != null) {
         _stopCachingPulse();
-        final file = result.files.single;
         final name = file.name;
         
         if (!name.endsWith('.gguf')) {
@@ -289,7 +288,8 @@ class ModelController extends GetxController {
           return;
         }
 
-        final sizeGb = file.size / (1024 * 1024 * 1024);
+        final fileSize = await file.length();
+        final sizeGb = fileSize / (1024 * 1024 * 1024);
         final confirmed = await _confirmLargeModel(sizeGb);
         if (!confirmed) return;
 
@@ -301,12 +301,12 @@ class ModelController extends GetxController {
         if (file.path != null) {
           // Instant move (rename) instead of slow stream copy
           await _manager.moveModel(file.path!, name);
-        } else if (file.readStream != null) {
+        } else {
           // Stream if path is somehow null
           await _manager.importModelFromStream(
             filename: name,
-            stream: file.readStream!,
-            totalBytes: file.size,
+            stream: file.readAsByteStream(),
+            totalBytes: fileSize,
             onProgress: (p) => loadingProgress.value = p,
             checkCancelled: () => !isImportingModel.value,
           );
@@ -354,7 +354,7 @@ class ModelController extends GetxController {
 
       // Clean up the massive file_picker cache
       try {
-        await FilePicker.platform.clearTemporaryFiles();
+        await FilePicker.clearTemporaryFiles();
       } catch (_) {}
     }
   }
@@ -362,7 +362,7 @@ class ModelController extends GetxController {
   /// Import from a directory — scan for all .gguf files.
   Future<void> importFromDirectory() async {
     try {
-      final dirPath = await FilePicker.platform.getDirectoryPath();
+      final dirPath = await FilePicker.getDirectoryPath();
       if (dirPath == null) return;
 
       final dir = Directory(dirPath);
