@@ -102,6 +102,8 @@ flutter build ios --release
 
 > Desktop builds compile successfully but may have rough edges. **We are actively looking for contributors** to help test and polish the desktop experience.
 
+macOS builds require macOS 14 or newer because of the native llama runtime.
+
 ```bash
 git clone https://github.com/techjarves/Uncensored-Local-AI-Multiplatform.git
 cd Uncensored-Local-AI-Multiplatform
