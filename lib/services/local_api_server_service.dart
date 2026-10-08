@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:get/get.dart';
 import 'package:llamadart/llamadart.dart';
@@ -12,6 +13,7 @@ import 'wakelock_service.dart';
 class LocalApiServerService extends GetxService {
   static const defaultHost = '127.0.0.1';
   static const defaultPort = 4891;
+  static const _maxRequestBodyBytes = 1024 * 1024;
 
   final LlmService _llm = Get.find<LlmService>();
   final ChatStorageService _storage = Get.find<ChatStorageService>();
@@ -88,7 +90,7 @@ class LocalApiServerService extends GetxService {
       _server = null;
       isRunning.value = false;
       errorMessage.value = e.toString();
-      // Do not rethrow here, so that app initialization can continue 
+      // Do not rethrow here, so that app initialization can continue
       // even if the local API server fails to bind.
     } finally {
       isStarting.value = false;
@@ -188,10 +190,11 @@ class LocalApiServerService extends GetxService {
     } on _OpenAiRequestException catch (e) {
       await _writeError(
         request.response,
-        HttpStatus.badRequest,
+        e.statusCode,
         e.message,
         type: 'invalid_request_error',
         param: e.param,
+        code: e.code,
       );
     } catch (e) {
       await _writeError(
@@ -521,11 +524,35 @@ class LocalApiServerService extends GetxService {
   }
 
   Future<Map<String, dynamic>> _readJsonObject(HttpRequest request) async {
+    if (request.contentLength > _maxRequestBodyBytes) {
+      throw const _OpenAiRequestException(
+        'Request body exceeds the 1 MiB limit.',
+        statusCode: HttpStatus.requestEntityTooLarge,
+        code: 'request_too_large',
+      );
+    }
+
     try {
-      final raw = await utf8.decoder.bind(request).join();
+      final bytes = BytesBuilder(copy: false);
+      var byteCount = 0;
+      await for (final chunk in request) {
+        byteCount += chunk.length;
+        if (byteCount > _maxRequestBodyBytes) {
+          throw const _OpenAiRequestException(
+            'Request body exceeds the 1 MiB limit.',
+            statusCode: HttpStatus.requestEntityTooLarge,
+            code: 'request_too_large',
+          );
+        }
+        bytes.add(chunk);
+      }
+
+      final raw = utf8.decode(bytes.takeBytes());
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } on _OpenAiRequestException {
+      rethrow;
     } catch (_) {
       throw _OpenAiRequestException('Request body must be valid JSON.');
     }
@@ -608,6 +635,13 @@ class _ChatCompletionRequest {
 class _OpenAiRequestException implements Exception {
   final String message;
   final String? param;
+  final int statusCode;
+  final String? code;
 
-  const _OpenAiRequestException(this.message, {this.param});
+  const _OpenAiRequestException(
+    this.message, {
+    this.param,
+    this.statusCode = HttpStatus.badRequest,
+    this.code,
+  });
 }

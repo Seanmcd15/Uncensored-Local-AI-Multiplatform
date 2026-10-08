@@ -108,6 +108,38 @@ void main() {
       }
     },
   );
+
+  test('chat completions reject oversized request bodies', () async {
+    final port = await _freePort();
+    await apiServer.start(requestedPort: port);
+    Get.find<LlmService>().isLoaded.value = true;
+
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(
+        Uri.parse('http://127.0.0.1:$port/v1/chat/completions'),
+      );
+      request.headers.contentType = ContentType.json;
+      request.write(
+        jsonEncode({
+          'model': 'local',
+          'messages': [
+            {'role': 'user', 'content': 'x' * (1024 * 1024)},
+          ],
+        }),
+      );
+
+      final response = await request.close();
+      final body =
+          jsonDecode(await utf8.decoder.bind(response).join())
+              as Map<String, dynamic>;
+
+      expect(response.statusCode, HttpStatus.requestEntityTooLarge);
+      expect((body['error'] as Map)['code'], 'request_too_large');
+    } finally {
+      client.close(force: true);
+    }
+  });
 }
 
 Future<int> _freePort() async {
