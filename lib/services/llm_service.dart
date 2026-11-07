@@ -198,7 +198,10 @@ class LlmService extends GetxService {
 
       // Enable wake lock for inference on mobile (keeps app from being killed)
       final modelName = p.basenameWithoutExtension(path);
-      await wakelockService?.enableForInference(modelName: modelName);
+      await wakelockService?.enableForInference(
+        owner: WakelockService.modelOwner,
+        modelName: modelName,
+      );
 
       // Brief delay to show 100%
       await Future.delayed(const Duration(milliseconds: 300));
@@ -427,7 +430,7 @@ class LlmService extends GetxService {
     // Disable wake lock when model is unloaded
     try {
       final wakelockService = Get.find<WakelockService>();
-      await wakelockService.disable();
+      await wakelockService.release(owner: WakelockService.modelOwner);
     } catch (_) {}
   }
 

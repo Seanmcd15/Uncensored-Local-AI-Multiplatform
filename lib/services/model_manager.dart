@@ -121,9 +121,13 @@ class ModelManager extends GetxService {
 
     // Enable wake lock + foreground service for download (fire and forget so UI updates instantly)
     WakelockService? wakelockService;
+    final wakelockOwner = WakelockService.downloadOwner(model.filename);
     try {
       wakelockService = Get.find<WakelockService>();
-      wakelockService.enableForDownload(modelName: model.name);
+      wakelockService.enableForDownload(
+        owner: wakelockOwner,
+        modelName: model.name,
+      );
     } catch (e) {
       debugPrint('WakelockService not available: $e');
     }
@@ -219,12 +223,9 @@ class ModelManager extends GetxService {
       _httpClient?.close();
       _httpClient = null;
 
-      // Disable wake lock if no other downloads are active
-      if (activeDownloads.isEmpty) {
-        try {
-          await wakelockService?.disable();
-        } catch (_) {}
-      }
+      try {
+        await wakelockService?.release(owner: wakelockOwner);
+      } catch (_) {}
     }
   }
 

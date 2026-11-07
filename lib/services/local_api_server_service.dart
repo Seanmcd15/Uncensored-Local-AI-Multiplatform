@@ -71,7 +71,9 @@ class LocalApiServerService extends GetxService {
 
       try {
         final wakelockService = Get.find<WakelockService>();
-        await wakelockService.enableForInference();
+        await wakelockService.enableForInference(
+          owner: WakelockService.localApiOwner,
+        );
       } catch (_) {}
 
       unawaited(
@@ -107,7 +109,7 @@ class LocalApiServerService extends GetxService {
     }
     try {
       final wakelockService = Get.find<WakelockService>();
-      await wakelockService.disable();
+      await wakelockService.release(owner: WakelockService.localApiOwner);
     } catch (_) {}
   }
 

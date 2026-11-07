@@ -9,10 +9,12 @@ import 'package:portable_ai_flutter/models/message_model.dart';
 import 'package:portable_ai_flutter/services/chat_storage_service.dart';
 import 'package:portable_ai_flutter/services/llm_service.dart';
 import 'package:portable_ai_flutter/services/local_api_server_service.dart';
+import 'package:portable_ai_flutter/services/wakelock_service.dart';
 
 void main() {
   late Directory tempDir;
   late LocalApiServerService apiServer;
+  late WakelockService wakelockService;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('portable-ai-api-test-');
@@ -34,6 +36,8 @@ void main() {
     final storage = await ChatStorageService().init();
     Get.put<LlmService>(LlmService());
     Get.put<ChatStorageService>(storage);
+    wakelockService = WakelockService();
+    Get.put<WakelockService>(wakelockService);
     apiServer = Get.put<LocalApiServerService>(LocalApiServerService());
   });
 
@@ -108,6 +112,36 @@ void main() {
       }
     },
   );
+
+  test('stopping the API server preserves a loaded model wakelock', () async {
+    final port = await _freePort();
+    await wakelockService.enableForInference(
+      owner: WakelockService.modelOwner,
+    );
+
+    await apiServer.start(requestedPort: port);
+    expect(wakelockService.isHeldBy(WakelockService.localApiOwner), isTrue);
+
+    await apiServer.stop();
+
+    expect(wakelockService.isHeldBy(WakelockService.localApiOwner), isFalse);
+    expect(wakelockService.isHeldBy(WakelockService.modelOwner), isTrue);
+    expect(wakelockService.hasActiveOwners, isTrue);
+  });
+
+  test('releasing a model preserves the API server wakelock', () async {
+    final port = await _freePort();
+    await apiServer.start(requestedPort: port);
+    await wakelockService.enableForInference(
+      owner: WakelockService.modelOwner,
+    );
+
+    await wakelockService.release(owner: WakelockService.modelOwner);
+
+    expect(wakelockService.isHeldBy(WakelockService.modelOwner), isFalse);
+    expect(wakelockService.isHeldBy(WakelockService.localApiOwner), isTrue);
+    expect(wakelockService.hasActiveOwners, isTrue);
+  });
 }
 
 Future<int> _freePort() async {
